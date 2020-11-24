@@ -17,19 +17,25 @@ import UIKit
 
 // MARK: - ScrollMetricsMutator
 
-/// Facilitates infinite scrolling by looping the scroll position until an edge is hit.
+/// Facilitates infinite scrolling by looping the scroll position infinitely until a boundary is hit.
 final class ScrollMetricsMutator {
 
   // MARK: Lifecycle
 
-  init(scrollMetricsProvider: ScrollMetricsProvider, scrollAxis: ScrollAxis) {
+  init(
+    scrollMetricsProvider: ScrollMetricsProvider,
+    scrollAxis: ScrollAxis,
+    didLoopOffsetByDelta: @escaping (CGFloat) -> Void)
+  {
     self.scrollMetricsProvider = scrollMetricsProvider
     self.scrollAxis = scrollAxis
+    self.didLoopOffsetByDelta = didLoopOffsetByDelta
   }
 
   // MARK: Internal
 
   let scrollAxis: ScrollAxis
+  let didLoopOffsetByDelta: (CGFloat) -> Void
 
   func setUpInitialMetricsIfNeeded() {
     guard !hasSetUpInitialScrollMetrics else { return }
@@ -80,23 +86,32 @@ final class ScrollMetricsMutator {
   func loopOffsetIfNeeded(updatingPositionOf layoutItem: LayoutItem) -> LayoutItem {
     var origin = layoutItem.frame.origin
 
-    let offset = scrollMetricsProvider.offset(for: scrollAxis)
-    let startInset = scrollMetricsProvider.startInset(for: scrollAxis)
-    let endInset = scrollMetricsProvider.endInset(for: scrollAxis)
+    // Looping the offset when we're decelarating can cause some odd behavior with target content
+    // offset due to that value potentially being stale if we loop our offset during a deceleration.
+    if !scrollMetricsProvider.isDecelerating {
+      let offset = scrollMetricsProvider.offset(for: scrollAxis)
+      let startInset = scrollMetricsProvider.startInset(for: scrollAxis)
+      let endInset = scrollMetricsProvider.endInset(for: scrollAxis)
 
-    if offset < Self.minimumContentOffset && startInset == 0 {
-      scrollMetricsProvider.setOffset(to: Self.maximumContentOffset, for: scrollAxis)
+      if offset < Self.minimumContentOffset && startInset == 0 {
+        scrollMetricsProvider.setOffset(to: Self.maximumContentOffset, for: scrollAxis)
 
-      switch scrollAxis {
-      case .vertical: origin.y += Self.loopingRegionSize
-      case .horizontal: origin.x += Self.loopingRegionSize
-      }
-    } else if offset > Self.maximumContentOffset && endInset == 0 {
-      scrollMetricsProvider.setOffset(to: Self.minimumContentOffset, for: scrollAxis)
+        switch scrollAxis {
+        case .vertical: origin.y += Self.loopingRegionSize
+        case .horizontal: origin.x += Self.loopingRegionSize
+        }
 
-      switch scrollAxis {
-      case .vertical: origin.y -= Self.loopingRegionSize
-      case .horizontal: origin.x -= Self.loopingRegionSize
+        didLoopOffsetByDelta(Self.loopingRegionSize)
+      } else if offset > Self.maximumContentOffset && endInset == 0 {
+        scrollMetricsProvider.setOffset(to: Self.minimumContentOffset, for: scrollAxis)
+        print("New offset: \(scrollMetricsProvider.offset(for: scrollAxis))")
+
+        switch scrollAxis {
+        case .vertical: origin.y -= Self.loopingRegionSize
+        case .horizontal: origin.x -= Self.loopingRegionSize
+        }
+
+        didLoopOffsetByDelta(-Self.loopingRegionSize)
       }
     }
 
@@ -133,6 +148,8 @@ enum ScrollAxis {
 // MARK: - ScrollMetricsProvider
 
 protocol ScrollMetricsProvider: class {
+
+  var isDecelerating: Bool { get }
 
   func size(for scrollAxis: ScrollAxis) -> CGFloat
   func setSize(to size: CGFloat, for scrollAxis: ScrollAxis)

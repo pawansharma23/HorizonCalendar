@@ -281,6 +281,15 @@ public final class CalendarView: UIView {
       anchorLayoutItem = nil
     }
 
+    if
+      case .horizontal(let options) = content.monthsLayout,
+      options.paginationBehavior != .disabled
+    {
+      scrollView.decelerationRate = .fast
+    } else {
+      scrollView.decelerationRate = .normal
+    }
+
     setNeedsLayout()
   }
 
@@ -371,15 +380,22 @@ public final class CalendarView: UIView {
   private let reuseManager = ItemViewReuseManager()
 
   private var content: CalendarViewContent
-  private var anchorLayoutItem: LayoutItem?
+
   private var _scrollMetricsMutator: ScrollMetricsMutator?
+
+  private var anchorLayoutItem: LayoutItem?
   private var _visibleItemsProvider: VisibleItemsProvider?
   private var visibleItemsDetails: VisibleItemsDetails?
   private var visibleViewsForVisibleItems = [VisibleCalendarItem: ItemView]()
+
   private weak var scrollToItemDisplayLink: CADisplayLink?
   private var scrollToItemAnimationStartTime: CFTimeInterval?
+
   private var cachedAccessibilityElements: [Any]?
   private var focusedAccessibilityElement: Any?
+
+  private var pageIndex = 0
+  private var loopOffsetToApplyToTargetContentOffset: CGFloat?
 
   private var scrollToItemContext: ScrollToItemContext? {
     willSet {
@@ -420,14 +436,20 @@ public final class CalendarView: UIView {
       if scrollAxis != previousScrollMetricsMutator.scrollAxis {
         scrollMetricsMutator = ScrollMetricsMutator(
           scrollMetricsProvider: scrollView,
-          scrollAxis: scrollAxis)
+          scrollAxis: scrollAxis,
+          didLoopOffsetByDelta: { [weak self] delta in
+            self?.loopOffsetToApplyToTargetContentOffset = delta
+          })
       } else {
         scrollMetricsMutator = previousScrollMetricsMutator
       }
     } else {
       scrollMetricsMutator = ScrollMetricsMutator(
         scrollMetricsProvider: scrollView,
-        scrollAxis: scrollAxis)
+        scrollAxis: scrollAxis,
+        didLoopOffsetByDelta: { [weak self] delta in
+          self?.loopOffsetToApplyToTargetContentOffset = delta
+        })
     }
 
     _scrollMetricsMutator = scrollMetricsMutator
@@ -750,6 +772,36 @@ extension CalendarView: UIScrollViewDelegate {
   public func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
     guard let visibleDayRange = visibleDayRange else { return }
     didEndDecelerating?(visibleDayRange)
+  }
+
+  @available(
+    *,
+    deprecated,
+    message: "Do not invoke this function directly, as it is only intended to be called from the internal implementation of `CalendarView`. This will be removed in a future major release.")
+  public func scrollViewWillEndDragging(
+    _ scrollView: UIScrollView,
+    withVelocity velocity: CGPoint,
+    targetContentOffset: UnsafeMutablePointer<CGPoint>)
+  {
+    guard case .horizontal(let options) = content.monthsLayout else { return }
+
+    let monthWidth = options.monthWidth(
+      calendarWidth: bounds.width,
+      interMonthSpacing: content.interMonthSpacing)
+    let pageSize = monthWidth + content.interMonthSpacing
+
+    if velocity.x < 0 {
+      pageIndex = max(0, pageIndex - 1)
+    } else if velocity.x > 0 {
+      pageIndex = min(content.numberOfMonths, pageIndex + 1)
+    }
+
+    // This needs to loop back as well!
+    targetContentOffset.pointee.x = 10_000 +
+      (CGFloat(pageIndex) * pageSize) +
+      (loopOffsetToApplyToTargetContentOffset ?? 0)
+    loopOffsetToApplyToTargetContentOffset = nil
+    print("Target content offset: \(targetContentOffset.pointee.x) from \(scrollView.contentOffset.x)")
   }
 
 }

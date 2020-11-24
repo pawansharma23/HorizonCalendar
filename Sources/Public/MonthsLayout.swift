@@ -141,15 +141,24 @@ public struct HorizontalMonthsLayoutOptions: Equatable {
   /// - Parameters:
   ///   - maximumFullyVisibleMonths: The maximum number of fully visible months for any scroll offset. The default value is
   ///   `1`.
-  public init(maximumFullyVisibleMonths: Double = 1) {
+  ///   - paginationBehavior: The pagination (scroll snapping) behavior of the horizontally-scrolling calendar. The default value
+  ///   is `.byMonth`.
+  public init(
+    maximumFullyVisibleMonths: Double = 1,
+    paginationBehavior: PaginationBehavior = .byMonth)
+  {
     assert(maximumFullyVisibleMonths >= 1, "`maximumFullyVisibleMonths` must be greater than 1.")
     self.maximumFullyVisibleMonths = maximumFullyVisibleMonths
+    self.paginationBehavior = paginationBehavior
   }
 
   // MARK: Public
 
   /// The maximum number of fully visible months for any scroll offset.
   public let maximumFullyVisibleMonths: Double
+
+  /// The pagination (scroll snapping) behavior of the horizontally-scrolling calendar.
+  public let paginationBehavior: PaginationBehavior
 
   // MARK: Internal
 
@@ -163,6 +172,26 @@ public struct HorizontalMonthsLayoutOptions: Equatable {
 
     let visibleInterMonthSpacing = CGFloat(maximumFullyVisibleMonths) * interMonthSpacing
     return (calendarWidth - visibleInterMonthSpacing) / CGFloat(maximumFullyVisibleMonths)
+  }
+
+}
+
+// MARK: - HorizontalMonthsLayoutOptions.PaginationBehavior
+
+extension HorizontalMonthsLayoutOptions {
+
+  /// The pagination (scroll snapping) behavior of the horizontally-scrolling calendar.
+  public enum PaginationBehavior {
+
+    /// The calendar will scroll without any pagination behavior.
+    case disabled
+
+    /// The calendar will paginate in increments of one month.
+    case byMonth
+
+    /// The calendar will paginate in increments equal to
+    /// `HorizontalMonthsLayoutOptions.maximumFullyVisibleMonths`.
+    case byMaximumFullyVisibleMonths
   }
 
 }
